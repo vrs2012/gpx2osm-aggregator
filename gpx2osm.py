@@ -37,6 +37,7 @@ DEBUG=1
 CHKDIST = 200.0 # when deciding if two tracks run parrallel - how many meters to check
 MPERLAT = 111000.0 # metres per degree latitude
 MPERLON = 111000.0 # meters per degree longitude (this is adjusted from first lon reading in import)
+MPERSET = False
 
 
 # ==================== DATA =========================        
@@ -363,12 +364,17 @@ XMLNS = None
 def import_file(filename):
     # map = storage
     global XMLNS
+    global MPERLON
+    global MPERSET
     print 'IMPORT ' + filename , '...',
     t = ET.ElementTree().parse(filename)
     XMLNS = uri_from_elem(t)
-    firstpoint = find(t, 'trk/trkseg/trkpt')
-    lat = float(firstpoint.attrib['lat'])
-    MPERLON = math.cos(lat / 180.0 * math.pi) * MPERLAT
+    if not MPERSET:
+        firstpoint = find(t, 'trk/trkseg/trkpt')
+        if firstpoint==None: print 'no data'; return
+        lat = float(firstpoint.attrib['lat'])
+        MPERLON = math.cos(lat / 180.0 * math.pi) * MPERLAT
+        MPERSET = True
     for s in findall(t, 'trk/trkseg'):
         prev_node =None
         for p in findall(s,'trkpt'):

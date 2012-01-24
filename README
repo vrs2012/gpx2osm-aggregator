@@ -1,0 +1,41 @@
+gpx2osm-aggregator
+
+This is utility script that converts gpx files into (more) usable OSM way file. 
+
+Purpose is to make easier to draw OSM map data when you have lot 
+of gpx data to play with.
+Without such script you would open gpx tracks in JOSM and manually 
+build new way by clicking approximately on centre of many gpx tracks.
+
+This output probably saves some of clicking. 
+
+Expected workflow is:
+- get gpx data for area
+- create .osm file
+- load both gpx and osm data into JOSM
+- download actual osm data into "working layer".
+- is osm file manually clean/verify data. copy good roads to "working layer".
+- connect new roads to existing in the working layer. 
+- add refs, names etc
+- upload
+
+
+Practical usability:
+- script technically works. 
+- practical result depends on quality of gpx files:
+    - clean files, where there are 5..100 tracks run a road in empty space
+      will probably be converted identical to what a pedantic human operator would do.
+      (curves, straights). 
+    - T and X intersections, if data is not too noisy will be 80% correct.
+      some intersections (sharp angles, standing still at traffic lights, noisy
+      data etc) will need human to check and delete incorrect shortcuts. 
+    - noisy files, where there is combination of good signal with noise 
+      (i.e. parking lot, with visible often-used paths on top of hairy mess)
+      these are hardest. Resulting osm will probably contain lot of garbage
+      ways and will need heavy modification from user. 
+- speed should not be an issue. 1m of tracks take seconds (10?) to process.
+
+Running script:
+- launch in command line (python gpx2osm.py -in==my.gpx)
+
+

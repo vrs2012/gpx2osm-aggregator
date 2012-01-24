@@ -1,0 +1,95 @@
+
+About algorithms used in script.
+
+
+DATA MODEL.
+graph consists of edges and nodes.
+Nodes have 
+    x,y properties (lat lon converted to meters on import and back on export).
+    (meters make it easier to do calculations). 
+    edges - collection of edges connected to this node. 
+Edges have
+    node1,node2 - references to node objects. 
+        One node can be referenced by many edges and one edge by many nodes. 
+        node1-node2 roles are changeable. Edges are flipped during calculations
+    len - length of edge. precalculated on creation or node moving.
+    mass - "mass" of edge. during import every edge mass=len. later, mass of 
+        whole world stays approximately constant - splitting and unifying 
+        edges does not change total mass of world. mass approximately represents vehicle-meters 
+        supporting this edge. (i.e. edge of len 50m mass 257.9, is aggregation of 
+        about 5 tracks.
+    direction - 1.0 full forward, 0.0 full backwards. Calculated as by direction and 
+        mass of edges on unification.
+Map - world holder.
+    edges - set of all edges in world
+    nodes - set of all nodes in world. only nodes used in edge are here. 
+    grid  - indexed node list (world is grid of 50m, find nearby nodes faster)
+
+
+MODIFICATION PROCEDURES.
+SIMPLIFY - remove nodes from graph where removal does not affect significant details. 
+    i.e. 3 nodes in almost straight line - mid node can be safely removed.
+    simplify only touch single track segments. (intersections ignored). 
+
+    i.e. situation: A------C---B.
+    C will be removed if it is close to A-B line. (i.e. 5m).
+
+    Important feature is that A,B are moved towards C, depending on their mass. 
+    This is done to avoid effect of moving line towards inner side of curve.  
+
+    Explained: imagine way with large radius curves (20m segments in a 500m curves).
+    as we test and remove nodes (initially every node is "flat"), remaining segments move
+    towards centre of curve. Resulting way will constantly "take shortcuts" on every curve.
+
+    To avoid it, whenever a node is removed, neighbour nodes "consume" it's location
+    and move outwards, so that centre-of-mass for this track will remain approximately in the 
+    same location. 
+
+    Why not use Douglas-Peucker algorythm?
+    DP would create similar "shortcut" effect towards centre of curves. DP attempts to 
+    keep original nodes intact. This is probably ok when you need to simplify detailed reliable
+    data into simpler structure (i.e. detailed shoreline of country transformed into shoreline
+    for continent - you still want that remaining points are exact locations of horns or bays).
+    This is not relevant and even bad for gpx data, where source data by nature is not reliable.
+
+    Approximation of gpx line is more usable than reduction of number of points.
+
+NAVIGATE. this is used during identification.
+    Navigation is kind-of route building. For a given node and given distance find all points 
+    that are reachable using edge-network. I.e. if we have single gpx track running exactly 
+    North-South, it would return 2 points, exactly 200m above and below tested node. 
+
+    This allows to test if tracks are compatible or not. Imagine we found two nodes or sections
+    in map and need to determine if they belong to same physical road. If navigating 200m 
+    to either direction on each track is still close enough we know tracks are parallel. If 
+    navigated points are all appart, these tracks are not compatible. (i.e. noise or tracks
+    are crossing on viaduct). 
+    
+IDENTIFY close running tracks. 
+    during aggregation we must find close-running tracks that are probably using the 
+    same physical roads, therefore usable for drawing ways. 
+
+    this is done into several stages:
+    1) (for each edge) find nodes that are close to this edge. Indexed grid is used for 
+    faster search of nodes in area. Test only nodes that match criteria.
+    2) (for each node). navigate from this node and this edge 200m. Test if tracks are still
+    close then. 
+      
+ZIP
+    this is action of "zipping" two tracks into one. 
+    Starts from intersection with node common to both tracks.
+                        ____*------*---------- 
+        -----*---------*-------*--*--------*
+    like this. 
+
+    If there are two out-going edges, and they are close enough, we can combine (zip)
+    them into single edge. Then perform zip on new edge (which is again likely to sit
+    at start of two out-going edges that are close enough). Long-parallel-running tracks
+    are zipped point by point. 
+
+    Similary as in simplify, nodes are moved towards each other on zipping. Again, 
+    trying to preserve centre-of-mass of combined track approximately the same as original
+    tracks. Edges gain mass during every combination - so most combined edges are heaviest.
+    So, resulting tracks will tend to move towards centre (weighted average of tracks).
+
+

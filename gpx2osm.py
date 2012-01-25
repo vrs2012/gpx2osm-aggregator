@@ -83,7 +83,7 @@ class Node(object):
         map.grid[self.idx].add(self)
         for e in list(self.edges):
             e.len = e.node1-e.node2
-            if e.len<=0.01: e.node1.merge(e.node2) 
+        #    if e.len<=0.01: e.node1.merge(e.node2,False) 
        
     def vector(self,node2):
         # return vector in radians 
@@ -170,16 +170,17 @@ class Node(object):
         return nodes
 
     
-    def merge(self,B):
+    def merge(self,B, do_move = True):
         # merge two nodes in one. B is the "other node"
         if self==B: return self
 
         # step 1 - calculate average point for new centre node
-        A_w = 0.1 + sum([e.mass for e in self.edges])
-        B_w = 0.1 + sum([e.mass for e in self.edges])
-        self.x += (B.x-self.x)*A_w/(A_w+B_w)
-        self.y += (B.y-self.y)*A_w/(A_w+B_w)
-        self.xy_update()
+        if do_move:
+            A_w = 0.1 + sum([e.mass for e in self.edges])
+            B_w = 0.1 + sum([e.mass for e in self.edges])
+            self.x += (B.x-self.x)*A_w/(A_w+B_w)
+            self.y += (B.y-self.y)*A_w/(A_w+B_w)
+            self.xy_update()
         
         for edge in list(B.edges):
             n1,n2 = edge.node1, edge.node2
@@ -450,80 +451,84 @@ def simplify(radius):
         
     if DEBUG: print 'SIMPLIFY...edges=%s' % (len(map.edges),),
     log = collections.defaultdict(int)
+    for bin in map.grid.values():
+        #print 'bin with nodes:',len(bin)
+        for C in list(bin):
+            if len(C.edges)!=2:
+                log['len_not_2']+=1 
+                continue
+            
+            e1,e2 = list(C.edges)
+            if e1.node1==C: A = e1.node2
+            else: A = e1.node1
+            if e2.node1==C: B = e2.node2
+            else: B = e2.node1
+            
+            if A==B: 
+                e1.kill()
+                e2.kill()
+                log['a=b']+=1
+                continue
 
-    for C in list(map.nodes):
-        if len(C.edges)!=2:
-            log['len_not_2']+=1 
-            continue
-        
-        e1,e2 = list(C.edges)
-        if e1.node1==C: A = e1.node2
-        else: A = e1.node1
-        if e2.node1==C: B = e2.node2
-        else: B = e2.node1
-        
-        if A==B: 
-            e1.kill()
-            e2.kill()
-            log['a=b']+=1
-            continue
+            AB = A-B
+            
+            if AB<radius:
+                e1.kill()
+                e2.kill()
+                A.merge(B)
+                log['sharp']+=1
+                continue
 
-        AB = A-B
-        
-        if AB<radius:
-            e1.kill()
-            e2.kill()
-            A.merge(B)
-            log['sharp']+=1
-            continue
+            CA = C-A
+            CB = C-B
+            
+            if CA>AB and C_from_AB(CA,CB,AB)<radius:
+                # C is very sharp angle (suspect noise)
+                new_edge = map.find_or_create_edge(A,B)
+                if e1.node2 == A: e1.flip()
+                new_edge.add_mass(e1)
+                e1.kill()
+                e2.kill()
+                log['sharpC']
+                continue
+            if CB>AB and C_from_AB(CB,CA,AB)<radius:
+                # C is very sharp angle (suspect noise)
+                new_edge = map.find_or_create_edge(A,B)
+                if e2.node1 == B: e2.flip()
+                new_edge.add_mass(e2)
+                e1.kill()
+                e2.kill()
+                log['sharpC']
+                continue
+            
+            if CA < AB and CB < AB and C_from_AB(AB, CA, CB)<radius:
+                C.move_to_edge(A,B)
+                new_edge = map.find_or_create_edge(A,B)
+                if e1.node2==A: e1.flip()
+                if e2.node1==B: e2.flip()
+                new_edge.add_mass(e1)
+                new_edge.add_mass(e2)
+                e1.kill()
+                e2.kill()
+                log['flat']+=1
+                continue    
+            
+            log['OK']+=1
+    if DEBUG: print '   ... edges_after=%s' % (len(map.edges),) #, ' log=',log
 
-        CA = C-A
-        CB = C-B
-        
-        if CA>AB and C_from_AB(CA,CB,AB)<radius:
-            # C is very sharp angle (suspect noise)
-            new_edge = map.find_or_create_edge(A,B)
-            if e1.node2 == A: e1.flip()
-            new_edge.add_mass(e1)
-            e1.kill()
-            e2.kill()
-            log['sharpC']
-            continue
-        if CB>AB and C_from_AB(CB,CA,AB)<radius:
-            # C is very sharp angle (suspect noise)
-            new_edge = map.find_or_create_edge(A,B)
-            if e2.node1 == B: e2.flip()
-            new_edge.add_mass(e2)
-            e1.kill()
-            e2.kill()
-            log['sharpC']
-            continue
-        
-        if CA < AB and CB < AB and C_from_AB(AB, CA, CB)<radius:
-            C.move_to_edge(A,B)
-            new_edge = map.find_or_create_edge(A,B)
-            if e1.node2==A: e1.flip()
-            if e2.node1==B: e2.flip()
-            new_edge.add_mass(e1)
-            new_edge.add_mass(e2)
-            e1.kill()
-            e2.kill()
-            log['flat']+=1
-            continue    
-        
-        log['OK']+=1
-    if DEBUG: print '   ... edges_after=%s' % (len(map.edges),), ' log=',log
-
-
+CNT_ZIP = 0
 def zip_from_node(C,radius):
     # tests if any exit edge combinations can be zip-merged (are running close enough)
+    global CNT_ZIP    
     if C not in map.nodes: return
     ledges = list(C.edges)
     for e1_idx in range(len(ledges)-1):
         for e2_idx in range(e1_idx+1,len(ledges)):
             e1 = ledges[e1_idx]
             e2 = ledges[e2_idx]
-            if zip_v(C,e1,e2,radius): return
+            if zip_v(C,e1,e2,radius):
+                CNT_ZIP += 1 
+                return
             
     
 def zip_v(A, edge1,edge2,radius):
@@ -598,9 +603,13 @@ def merge_edges3(radius):
     log = collections.defaultdict(int)
             
     edges_tested = set()
-    
+    cnt = 0
     for bin in map.grid.values():
         #print 'check bin', len(bin)
+        cnt+=1
+        sys.stdout.write('\rbin %s tested %s zips %s' % (cnt,len(edges_tested), CNT_ZIP))
+        sys.stdout.flush()
+                    
         log['bins_tested']+=1
         if len(bin)>1: 
             nlist = list(bin)
@@ -657,7 +666,7 @@ def merge_edges3(radius):
                     break
 
                 
-    if DEBUG: print '... edges_after=%s log=%s'% (len(map.edges),log)
+    if DEBUG: print '... edges_after=', len(map.edges) #, 'log', log
     
 def endpoints_match(ep1, ep2):
     # two collections of endpoints - do they have any points close
@@ -703,6 +712,7 @@ def test():
 
 
 def process():
+    print 'process started...'
     simplify(3.0)
     merge_edges3(3.0)
     zip_nodes_all(10.0)
